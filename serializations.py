@@ -166,6 +166,12 @@ def ser_int_vector(l):
         r += struct.pack("<i", i)
     return r
 
+def hex_str_to_bytes(s):
+    return binascii.unhexlify(s)
+
+def bytes_to_hex_str(s):
+    return binascii.hexlify(s)
+
 # Deserialize from a hex string representation (eg from RPC)
 def FromHex(obj, hex_string):
     obj.deserialize(BytesIO(hex_str_to_bytes(hex_string)))
@@ -925,9 +931,9 @@ def sighash_witness(script_code, psbt, i):
     preimage += hashPrevouts
     preimage += hashSequence
     preimage += psbt.tx.vin[i].prevout.serialize()
-    preimage += scriptCode
+    preimage += script_code
     preimage += struct.pack("<q", psbt.inputs[i].witness_utxo.nValue)
-    preimage += struct.pack("<I", txin.nSequence)
+    preimage += struct.pack("<I", psbt.tx.vin[i].nSequence)
     preimage += hashOutputs
     preimage += struct.pack("<I", psbt.tx.nLockTime)
     preimage += b"\x01\x00\x00\x00"

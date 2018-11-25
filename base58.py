@@ -11,7 +11,7 @@ b58_digits = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 
 from binascii import hexlify, unhexlify
 import struct
-from .serializations import hash256, hash160
+from serializations import hash256, hash160
 
 def encode(b):
     """Encode bytes to a base58-encoded string"""
@@ -68,7 +68,7 @@ def decode(s):
 def get_privkey(key_b58):
     data = decode(key_b58)
     key_data = data[1:-4]
-    if len(key_data) == 33 and key_data[-1] == 0:
+    if len(key_data) == 33 and key_data[-1] == 1:
         return (key_data[:32], True)
     else:
         assert(len(key_data) == 32)
