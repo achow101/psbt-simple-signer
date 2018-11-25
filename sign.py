@@ -3,15 +3,21 @@
 from serializations import PSBT, make_p2sh, make_p2pkh, is_witness, make_p2wsh, sighash_witness, sighash_non_witness, ser_uint256, bytes_to_hex_str
 from base58 import get_privkey
 from secp256k1 import PrivateKey, PublicKey, ffi
-import struct
 
 import argparse
+import struct
+import getpass
 
-parser = argparse.ArgumentParser(description='Signs a BIP 174 PSBT with the simple signer algorithm')
+parser = argparse.ArgumentParser(description='Signs a BIP 174 PSBT with the simple signer algorithm. The private key will be prompted by default')
 parser.add_argument('psbt', help='BIP 174 PSBT to sign')
-parser.add_argument('privkey', help='Private key in WIF to sign with')
+parser.add_argument('--privkey', help='Private key in WIF to sign with. Disables private key prompt')
 
 args = parser.parse_args()
+
+privkey = args.privkey
+
+if not args.privkey:
+    privkey = getpass.getpass('Enter the private key to sign with: ')
 
 # Deserialize PSBT
 try:
@@ -22,7 +28,7 @@ except Exception as e:
     exit(-1)
 
 # Deserialize the key and get it's pubkey
-b_key, compressed = get_privkey(args.privkey)
+b_key, compressed = get_privkey(privkey)
 key = PrivateKey(b_key)
 pubkey = key.pubkey
 b_pubkey = pubkey.serialize(compressed)
