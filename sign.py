@@ -10,14 +10,16 @@ import getpass
 
 parser = argparse.ArgumentParser(description='Signs a BIP 174 PSBT with the simple signer algorithm. The private key will be prompted by default')
 parser.add_argument('psbt', help='BIP 174 PSBT to sign')
-parser.add_argument('--privkey', help='Private key in WIF to sign with. Disables private key prompt')
+group = parser.add_mutually_exclusive_group()
+group.add_argument('--privkey', help='Private key in WIF to sign with. Disables private key prompt')
+group.add_argument('--keyfile', help='File containing private keys to sign with in WIF, one on each line. Disables private key prompt.')
 
 args = parser.parse_args()
 
-privkey = args.privkey
+privkeys = [args.privkey]
 
-if not args.privkey:
-    privkey = getpass.getpass('Enter the private key to sign with: ')
+if not args.privkey and not args.keyfile:
+    privkeys = [getpass.getpass('Enter the private key to sign with: ').rstrip().lstrip()]
 
 # Deserialize PSBT
 try:
@@ -27,56 +29,65 @@ except Exception as e:
     print('Invalid PSBT')
     exit(-1)
 
-# Deserialize the key and get it's pubkey
-b_key, compressed = get_privkey(privkey)
-key = PrivateKey(b_key)
-pubkey = key.pubkey
-b_pubkey = pubkey.serialize(compressed)
+if args.keyfile:
+    privkeys = []
+    with open(args.keyfile) as f:
+        for line in f.readlines():
+            line = line.lstrip().rstrip()
+            if line:
+                privkeys.append(line)
 
-def sign(script_code, i, sighash_func):
-    psbt_in = psbt.inputs[i]
-    for in_pubkey in psbt_in.hd_keypaths.keys():
-        if in_pubkey == b_pubkey:
-            # Sighash and sign
-            sighash = sighash_func(script_code, psbt, i)
-            sig_obj = key.ecdsa_sign(sighash, raw=True)
-            sig = key.ecdsa_serialize_compact(sig_obj)
+for privkey in privkeys:
+    # Deserialize the key and get it's pubkey
+    b_key, compressed = get_privkey(privkey)
+    key = PrivateKey(b_key)
+    pubkey = key.pubkey
+    b_pubkey = pubkey.serialize(compressed)
 
-            # Grind for low R
-            counter = 0
-            while sig[0] > 0x80:
-                sig_obj = key.ecdsa_sign(sighash, raw=True, custom_nonce=(ffi.NULL, struct.pack('<I', counter)))
+    def sign(script_code, i, sighash_func):
+        psbt_in = psbt.inputs[i]
+        for in_pubkey in psbt_in.hd_keypaths.keys():
+            if in_pubkey == b_pubkey:
+                # Sighash and sign
+                sighash = sighash_func(script_code, psbt, i)
+                sig_obj = key.ecdsa_sign(sighash, raw=True)
                 sig = key.ecdsa_serialize_compact(sig_obj)
-                counter += 1
 
-            # Serialize DER and add to partial sigs
-            _, sig_obj = key.ecdsa_signature_normalize(sig_obj)
-            psbt_in.partial_sigs[b_pubkey] = key.ecdsa_serialize(sig_obj) + b'\x01'
+                # Grind for low R
+                counter = 0
+                while sig[0] > 0x80:
+                    sig_obj = key.ecdsa_sign(sighash, raw=True, custom_nonce=(ffi.NULL, struct.pack('<I', counter)))
+                    sig = key.ecdsa_serialize_compact(sig_obj)
+                    counter += 1
 
-            break
+                # Serialize DER and add to partial sigs
+                _, sig_obj = key.ecdsa_signature_normalize(sig_obj)
+                psbt_in.partial_sigs[b_pubkey] = key.ecdsa_serialize(sig_obj) + b'\x01'
 
-for i, input in enumerate(psbt.inputs):
-    if input.non_witness_utxo:
-        assert(input.non_witness_utxo.sha256 == psbt.tx.vin[i].prevout.hash)
-        if input.redeem_script:
-            assert(input.non_witness_utxo.vout[psbt.tx.vin[i].prevout.n].scriptPubKey == make_p2sh(input.redeem_script))
-            sign(input.redeem_script, i, sighash_non_witness)
-        else:
-            sign(input.non_witness_utxo.vout[psbt.tx.vin[i].prevout.n].scriptPubKey, i, sighash_non_witness)
-    elif input.witness_utxo:
-        if input.redeem_script:
-            assert(input.witness_utxo.scriptPubKey == make_p2sh(input.redeem_script))
-            script = input.redeem_script
-        else:
-            script = input.witness_utxo.scriptPubKey
+                break
 
-        is_wit, wit_ver, wit_prog = is_witness(script)
-        assert(is_wit)
-        assert(wit_ver == 0)
-        if len(wit_prog) == 20:
-            sign(make_p2pkh(script[2:22]), i, sighash_witness)
-        elif len(wit_prog) == 32:
-            assert(script == make_p2wsh(input.witness_script))
-            sign(input.witness_script, i, sighash_witness)
+    for i, input in enumerate(psbt.inputs):
+        if input.non_witness_utxo:
+            assert(input.non_witness_utxo.sha256 == psbt.tx.vin[i].prevout.hash)
+            if input.redeem_script:
+                assert(input.non_witness_utxo.vout[psbt.tx.vin[i].prevout.n].scriptPubKey == make_p2sh(input.redeem_script))
+                sign(input.redeem_script, i, sighash_non_witness)
+            else:
+                sign(input.non_witness_utxo.vout[psbt.tx.vin[i].prevout.n].scriptPubKey, i, sighash_non_witness)
+        elif input.witness_utxo:
+            if input.redeem_script:
+                assert(input.witness_utxo.scriptPubKey == make_p2sh(input.redeem_script))
+                script = input.redeem_script
+            else:
+                script = input.witness_utxo.scriptPubKey
+
+            is_wit, wit_ver, wit_prog = is_witness(script)
+            assert(is_wit)
+            assert(wit_ver == 0)
+            if len(wit_prog) == 20:
+                sign(make_p2pkh(script[2:22]), i, sighash_witness)
+            elif len(wit_prog) == 32:
+                assert(script == make_p2wsh(input.witness_script))
+                sign(input.witness_script, i, sighash_witness)
 
 print(psbt.serialize())
