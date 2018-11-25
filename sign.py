@@ -1,6 +1,8 @@
 #! /usr/bin/env python3
 
 from .serializations import PSBT, make_p2sh, make_p2pkh, is_witness, make_p2wsh
+from .base58 import get_privkey
+from secp256k1 import PrivateKey, PublicKey
 
 import argparse
 
@@ -17,6 +19,12 @@ try:
 except Exception as e:
     print('Invalid PSBT')
     exit(-1)
+
+# Deserialize the key and get it's pubkey
+b_key, compressed = get_privkey(args.privkey)
+key = PrivateKey(b_key)
+pubkey = key.pubkey
+b_pubkey = pubkey.serialize(compressed)
 
 def sign_witness(script_code, i):
     pass
