@@ -235,6 +235,37 @@ def ser_sig_compact(r, s, recid):
 
     return sig
 
+# Script helper functions
+def make_p2sh(redeem_script):
+    # Get the hash160 of the redeem_script
+    h160 = hash160(redeem_script)
+
+    # Build spk
+    return b'\xa9\x14' + h160 + b'\x87'
+
+def make_p2pkh(h160):
+    assert(len(h160) == 20)
+    return b'\x76\xa9\x14' + h160 + b'\x88\xac'
+
+def make_p2wsh(witness_script):
+    # Get the sha256 of the witness_script
+    s256 = sha256(witness_script)
+
+    # Build spk
+    return b'\x00\x20' + s256
+
+def is_witness(script):
+    if len(script) < 4 or len(script) > 42:
+        return (False, None, None)
+
+    if script[0] != 0 and (script[0] < 81 or script[0] > 96):
+        return (False, None, None)
+
+    if script[1] + 2 == len(script):
+        return (True, script[0] - 0x50 if script[0] else 0, script[2:])
+
+    return (False, None, None)
+
 # Objects that map to bitcoind objects, which can be serialized/deserialized
 
 MSG_WITNESS_FLAG = 1<<30
@@ -310,16 +341,7 @@ class CTxOut(object):
         return (len(self.scriptPubKey) == 35 or len(self.scriptPubKey) == 67) and (self.scriptPubKey[0] == 0x21 or self.scriptPubKey[0] == 0x41) and self.scriptPubKey[-1] == 0xac
 
     def is_witness(self):
-        if len(self.scriptPubKey) < 4 or len(self.scriptPubKey) > 42:
-            return (False, None, None)
-
-        if self.scriptPubKey[0] != 0 and (self.scriptPubKey[0] < 81 or self.scriptPubKey[0] > 96):
-            return (False, None, None)
-
-        if self.scriptPubKey[1] + 2 == len(self.scriptPubKey):
-            return (True, self.scriptPubKey[0] - 0x50 if self.scriptPubKey[0] else 0, self.scriptPubKey[2:])
-
-        return (False, None, None)
+        return is_witness(self.scriptPubKey)
 
     def __repr__(self):
         return "CTxOut(nValue=%i.%08i scriptPubKey=%s)" \
@@ -835,7 +857,7 @@ class PSBT(object):
             output = PartiallySignedOutput()
             output.deserialize(f)
             self.outputs.append(output)
-        
+
         if len(self.outputs) != len(self.tx.vout):
             raise IOError("Outputs provided does not match the number of outputs in transaction")
 
