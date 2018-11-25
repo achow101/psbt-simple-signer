@@ -901,3 +901,48 @@ class PSBT(object):
         for input in self.inputs:
             if not input.is_sane(): return False
         return True
+
+# Sighash serializations
+def sighash_witness(script_code, psbt, i):
+    # Calculate hashPrevouts and hashSequence
+    prevouts_preimage = b""
+    sequence_preimage = b""
+    for inputs in psbt.tx.vin:
+        prevouts_preimage += inputs.prevout.serialize()
+        sequence_preimage += struct.pack("<I", inputs.nSequence)
+    hashPrevouts = hash256(prevouts_preimage)
+    hashSequence = hash256(sequence_preimage)
+
+    # Calculate hashOutputs
+    outputs_preimage = b""
+    for output in psbt.tx.vout:
+        outputs_preimage += output.serialize()
+    hashOutputs = hash256(outputs_preimage)
+
+    # Make sighash preimage
+    preimage = b""
+    preimage += struct.pack("<i", psbt.tx.nVersion)
+    preimage += hashPrevouts
+    preimage += hashSequence
+    preimage += psbt.tx.vin[i].prevout.serialize()
+    preimage += scriptCode
+    preimage += struct.pack("<q", psbt.inputs[i].witness_utxo.nValue)
+    preimage += struct.pack("<I", txin.nSequence)
+    preimage += hashOutputs
+    preimage += struct.pack("<I", psbt.tx.nLockTime)
+    preimage += b"\x01\x00\x00\x00"
+
+    # hash it
+    return hash256(preimage)
+
+def sighash_non_witness(script_code, psbt, i):
+
+    blank_tx = CTransaction(psbt.tx)
+    blank_tx.vin[i].scriptSig = script_code
+
+    # Serialize and add sighash ALL
+    ser_tx = blank_tx.serialize_without_witness()
+    ser_tx += b"\x01\x00\x00\x00"
+
+    # Hash it
+    return hash256(ser_tx)
