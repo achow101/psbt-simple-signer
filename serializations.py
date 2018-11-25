@@ -931,7 +931,7 @@ def sighash_witness(script_code, psbt, i):
     preimage += hashPrevouts
     preimage += hashSequence
     preimage += psbt.tx.vin[i].prevout.serialize()
-    preimage += script_code
+    preimage += ser_string(script_code)
     preimage += struct.pack("<q", psbt.inputs[i].witness_utxo.nValue)
     preimage += struct.pack("<I", psbt.tx.vin[i].nSequence)
     preimage += hashOutputs

@@ -45,7 +45,7 @@ def sign(script_code, i, sighash_func):
 
             # Serialize DER and add to partial sigs
             _, sig_obj = key.ecdsa_signature_normalize(sig_obj)
-            psbt_in.partial_sigs[b_pubkey] = key.ecdsa_serialize(sig_obj)
+            psbt_in.partial_sigs[b_pubkey] = key.ecdsa_serialize(sig_obj) + b'\x01'
 
             break
 
